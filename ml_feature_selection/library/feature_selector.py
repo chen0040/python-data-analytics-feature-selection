@@ -146,17 +146,19 @@ class FeatureSelector(object):
             X = samples
             y = numerical_targets
             sfm.fit(X, y)
-            n_features = sfm.transform(X).shape[1]
+            X = sfm.transform(X)
+            n_features = X.shape[1]
 
             # Reset the threshold till the number of features equals two.
             # Note that the attribute can be set directly instead of repeatedly
             # fitting the meta-transformer.
+
             while n_features > k:
                 sfm.threshold += 0.1
-                X_transform = sfm.transform(X)
-                n_features = X_transform.shape[1]
+                X = sfm.transform(X)
+                n_features = X.shape[1]
 
-            return X_transform
+            return X
 
         summary = 'apply lasso and keep {} best features'.format(k)
 
@@ -195,10 +197,10 @@ class FeatureSelector(object):
         for i in range(len(self.pipes)):
             pipe = self.pipes[i]
             sel, f, summary = pipe
+            print(summary)
             data1 = f(sel, samples=data, categorical_targets=self.categorical_targets,
                       numerical_targets=self.numerical_targets)
-            print(summary)
-            if type(data) is np.array and type(data1) is np.ndarray:
+            if type(data) is np.ndarray and type(data1) is np.ndarray:
                 print('before: ', data.shape, 'after: ', data1.shape)
             if tracking:
                 self.history[summary] = data1
