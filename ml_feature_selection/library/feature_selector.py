@@ -4,6 +4,7 @@ from sklearn.feature_selection import chi2
 from sklearn.feature_selection import f_regression
 from sklearn.linear_model import LassoCV
 from sklearn.svm import LinearSVC
+import numpy as np
 
 
 class FeatureSelector(object):
@@ -92,7 +93,7 @@ class FeatureSelector(object):
         sel = SelectKBest(score_func, k=k)
 
         def f(sel, samples, categorical_targets, numerical_targets):
-            return sel.fit_transform(samples, categorical_targets)
+            return sel.fit_transform(samples, numerical_targets)
 
         self.pipes.append((sel, f, summary))
         return self
@@ -197,6 +198,8 @@ class FeatureSelector(object):
             data1 = f(sel, samples=data, categorical_targets=self.categorical_targets,
                       numerical_targets=self.numerical_targets)
             print(summary)
+            if type(data) is np.array and type(data1) is np.ndarray:
+                print('before: ', data.shape, 'after: ', data1.shape)
             if tracking:
                 self.history[summary] = data1
             data = data1
