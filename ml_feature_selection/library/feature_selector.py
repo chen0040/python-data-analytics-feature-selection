@@ -121,9 +121,9 @@ class FeatureSelector(object):
 
         lsvc = LinearSVC(C=0.01, penalty="l1", dual=False)
 
-        def f(lsvc, samples, categorical_output, numerical_output):
+        def f(lsvc, samples, categorical_targets, numerical_targets):
             X = samples
-            y = categorical_output
+            y = categorical_targets
             lsvc = lsvc.fit(X, y)
             model = SelectFromModel(lsvc, prefit=True)
             return model.transform(X)
@@ -205,5 +205,3 @@ class FeatureSelector(object):
             if tracking:
                 self.history[summary] = data1
             data = data1
-
-        return data
