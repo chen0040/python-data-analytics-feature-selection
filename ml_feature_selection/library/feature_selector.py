@@ -3,6 +3,7 @@ from sklearn.feature_selection import SelectKBest
 from sklearn.feature_selection import chi2
 from sklearn.feature_selection import f_regression
 from sklearn.linear_model import LassoCV
+from sklearn.svm import LinearSVC
 
 
 class FeatureSelector(object):
@@ -40,25 +41,33 @@ class FeatureSelector(object):
 
     def should_apply_univariate_feature_selection(self, score_func=None, k=None):
         if score_func is None:
-            score_func = 'anova'
+            if self.numerical_targets is not None:
+                score_func = f_regression  # anova
+            if self.categorical_targets is not None:
+                score_func = chi2
 
         sel = self
-        if sel.categorical_targets is not None and score_func is 'anova':
-            sel = sel.should_apply_univariate_feature_selection_chi2(k)
-        if sel.categorical_targets is not None and score_func is 'chi2':
-            sel = sel.should_apply_univariate_feature_selection_anova(k)
+        if sel.numerical_targets is not None:
+            sel = sel.should_apply_univariate_feature_selection_regression(score_func, k)
+        if sel.categorical_targets is not None:
+            sel = sel.should_apply_univariate_feature_selection_classification(score_func, k)
         return sel
 
-    def should_apply_univariate_feature_selection_chi2(self, k=None):
+    def should_apply_univariate_feature_selection_classification(self, score_func=chi2, k=None):
         """
         This method apply chi2 test uni-variate feature selection and keep only k best features
+        :param score_func:
         :param k: the number of best features to keep
         :return: self
         """
+
+        if self.categorical_targets is None:
+            return self
+
         if k is None:
             k = 2
-        summary = 'apply chi2 univariate feature selection and keep {} best features'.format(k)
-        sel = SelectKBest(chi2, k=k)
+        summary = 'apply classification-based univariate feature selection and keep {} best features'.format(k)
+        sel = SelectKBest(score_func, k=k)
 
         def f(sel, samples, categorical_targets, numerical_targets):
             return sel.fit_transform(samples, categorical_targets)
@@ -66,24 +75,68 @@ class FeatureSelector(object):
         self.pipes.append((sel, f, summary))
         return self
 
-    def should_apply_univariate_feature_selection_anova(self, k=None):
+    def should_apply_univariate_feature_selection_regression(self, score_func=f_regression, k=None):
         """
         This method apply chi2 test uni-variate feature selection and keep only k best features
+        :param score_func: default is f_regression, that is anova
         :param k: the number of best features to keep
         :return: self
         """
+
+        if self.numerical_targets is None:
+            return self
+
         if k is None:
             k = 2
-        summary = 'apply chi2 univariate feature selection and keep {} best features'.format(k)
-        sel = SelectKBest(f_regression, k=k)
+        summary = 'apply regression-based univariate feature selection and keep {} best features'.format(k)
+        sel = SelectKBest(score_func, k=k)
 
         def f(sel, samples, categorical_targets, numerical_targets):
             return sel.fit_transform(samples, categorical_targets)
 
         self.pipes.append((sel, f, summary))
+        return self
+
+    def should_apply_L1_feature_selection(self, k=None):
+
+        if k is None:
+            k = 2
+
+        sel = self
+        if sel.numerical_targets is not None:
+            sel = sel.should_apply_lasso(k)
+        if sel.categorical_targets is not None:
+            sel = sel.should_apply_linearSVC(k)
+
+        return sel
+
+    def should_apply_linearSVC(self, k):
+
+        # With SVMs and logistic-regression, the parameter C controls the sparsity: the smaller C the fewer features
+        # selected. With Lasso, the higher the alpha parameter, the fewer features selected.
+
+        if self.categorical_targets is None:
+            return self
+
+        lsvc = LinearSVC(C=0.01, penalty="l1", dual=False)
+
+        def f(lsvc, samples, categorical_output, numerical_output):
+            X = samples
+            y = categorical_output
+            lsvc = lsvc.fit(X, y)
+            model = SelectFromModel(lsvc, prefit=True)
+            return model.transform(X)
+
+        summary = 'apply linear SVC and keep {} best features'.format(k)
+
+        self.pipes.append((lsvc, f, summary))
         return self
 
     def should_apply_lasso(self, k):
+
+        if self.numerical_targets is None:
+            return self
+
         clf = LassoCV()
 
         sfm = SelectFromModel(clf, threshold=0.25)
@@ -109,9 +162,14 @@ class FeatureSelector(object):
         self.pipes.append((sfm, f, summary))
         return self
 
-    def configure(self, k=None, remove_low_variance_features=False):
+    def configure(self, k=None,
+                  remove_low_variance_features=False,
+                  apply_univariate_feature_selection=False,
+                  apply_L1_feature_selection=True):
         """
         This method automatically choose the best way to apply feature selection for the samples
+        :param apply_L1_feature_selection:
+        :param apply_univariate_feature_selection:
         :param remove_low_variance_features: whether low variance features should be removed first
         :param k: the number of features to keep
         :return: self
@@ -124,10 +182,10 @@ class FeatureSelector(object):
 
         if remove_low_variance_features:
             sel = sel.should_remove_low_variance_features()
-        if self.categorical_targets is not None:
+        if apply_univariate_feature_selection:
             sel = sel.should_apply_univariate_feature_selection(k)
-        if self.numerical_targets is not None:
-            sel = sel.should_apply_lasso(k)
+        if apply_L1_feature_selection:
+            sel = sel.should_apply_L1_feature_selection(k)
         return sel
 
     def apply(self, tracking=False):
@@ -136,7 +194,8 @@ class FeatureSelector(object):
         for i in range(len(self.pipes)):
             pipe = self.pipes[i]
             sel, f, summary = pipe
-            data1 = f(sel, samples=data, categorical_targets=self.categorical_targets, numerical_targets=self.numerical_targets)
+            data1 = f(sel, samples=data, categorical_targets=self.categorical_targets,
+                      numerical_targets=self.numerical_targets)
             print(summary)
             if tracking:
                 self.history[summary] = data1

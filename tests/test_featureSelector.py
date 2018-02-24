@@ -23,10 +23,10 @@ class TestFeatureSelector(TestCase):
         X2 = s.apply()
         self.assertEqual(X2.shape[1], 2)
 
-    def test_lasso(self):
+    def test_L1_feature_selection(self):
         boston = load_boston()
         X, y = boston['data'], boston['target']
         self.assertEqual(X.shape[1], 13)
-        s = FeatureSelector(samples=X, numerical_targets=y).should_apply_lasso(k=2)
+        s = FeatureSelector(samples=X, numerical_targets=y).should_apply_L1_feature_selection(k=2)
         X2 = s.apply()
         self.assertEqual(X2.shape[1], 2)
